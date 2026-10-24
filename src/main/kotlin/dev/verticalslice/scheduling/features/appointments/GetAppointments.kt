@@ -25,7 +25,7 @@ import java.util.UUID
 class GetAppointmentsSlice(
     private val appointments: AppointmentRepository
 ) {
-    data class Query(
+    data class Request(
         val patientId: UUID? = null,
         val doctorId: UUID? = null,
         val status: AppointmentStatus? = null,
@@ -46,7 +46,7 @@ class GetAppointmentsSlice(
         @RequestParam(defaultValue = "1") pageNumber: Int,
         @RequestParam(defaultValue = "10") pageSize: Int
     ): ResponseEntity<*> {
-        val query = Query(
+        val request = Request(
             patientId = patientId,
             doctorId = doctorId,
             status = status,
@@ -55,42 +55,42 @@ class GetAppointmentsSlice(
             pageNumber = pageNumber,
             pageSize = pageSize
         )
-        return handle(query).toResponseEntity()
+        return handle(request).toResponseEntity()
     }
 
     @Transactional(readOnly = true)
-    fun handle(query: Query): AppResult<PaginatedList<AppointmentSummaryResponse>> {
-        if (query.pageNumber < 1) {
+    fun handle(request: Request): AppResult<PaginatedList<AppointmentSummaryResponse>> {
+        if (request.pageNumber < 1) {
             return AppResult.failure(
                 AppError.Validation("Pagination.InvalidPageNumber", "PageNumber must be at least 1")
             )
         }
-        if (query.pageSize !in 1..100) {
+        if (request.pageSize !in 1..100) {
             return AppResult.failure(
                 AppError.Validation("Pagination.InvalidPageSize", "PageSize must be between 1 and 100")
             )
         }
-        if (query.startDate != null && query.endDate != null && query.startDate.isAfter(query.endDate)) {
+        if (request.startDate != null && request.endDate != null && request.startDate.isAfter(request.endDate)) {
             return AppResult.failure(
                 AppError.Validation("Filter.InvalidDateRange", "StartDate must be before or equal to EndDate")
             )
         }
 
-        val pageRequest = PageRequest.of(query.pageNumber - 1, query.pageSize)
+        val pageRequest = PageRequest.of(request.pageNumber - 1, request.pageSize)
         val page = appointments.findFiltered(
-            patientId = query.patientId,
-            doctorId = query.doctorId,
-            status = query.status,
-            startDate = query.startDate,
-            endDate = query.endDate,
+            patientId = request.patientId,
+            doctorId = request.doctorId,
+            status = request.status,
+            startDate = request.startDate,
+            endDate = request.endDate,
             pageable = pageRequest
         )
 
         return AppResult.success(
             PaginatedList(
                 items = page.content.map(AppointmentSummaryResponse::from),
-                pageNumber = query.pageNumber,
-                pageSize = query.pageSize,
+                pageNumber = request.pageNumber,
+                pageSize = request.pageSize,
                 totalCount = page.totalElements
             )
         )

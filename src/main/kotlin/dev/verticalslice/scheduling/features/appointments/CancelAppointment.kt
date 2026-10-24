@@ -40,7 +40,7 @@ class CancelAppointmentSlice(
         val reason: String?
     )
 
-    data class Result(
+    data class Response(
         val id: UUID,
         val status: AppointmentStatus,
         val cancelledUtc: Instant,
@@ -57,7 +57,7 @@ class CancelAppointmentSlice(
     }
 
     @Transactional
-    fun handle(appointmentId: UUID, reason: String): AppResult<Result> {
+    fun handle(appointmentId: UUID, reason: String): AppResult<Response> {
         val appointment = appointments.findById(appointmentId).orElse(null)
             ?: return AppResult.failure(
                 AppError.NotFound("Appointment.NotFound", "Appointment with ID $appointmentId not found")
@@ -87,7 +87,7 @@ class CancelAppointmentSlice(
         }
 
         return AppResult.success(
-            Result(
+            Response(
                 id = appointment.id,
                 status = appointment.status,
                 cancelledUtc = appointment.cancelledUtc!!,

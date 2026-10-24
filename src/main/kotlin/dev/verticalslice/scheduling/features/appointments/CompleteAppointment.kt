@@ -43,7 +43,7 @@ class CompleteAppointmentSlice(
         val notes: String? = null
     )
 
-    data class Result(
+    data class Response(
         val id: UUID,
         val status: AppointmentStatus,
         val completedUtc: Instant,
@@ -60,7 +60,7 @@ class CompleteAppointmentSlice(
     }
 
     @Transactional
-    fun handle(appointmentId: UUID, notes: String?): AppResult<Result> {
+    fun handle(appointmentId: UUID, notes: String?): AppResult<Response> {
         val appointment = appointments.findById(appointmentId).orElse(null)
             ?: return AppResult.failure(
                 AppError.NotFound("Appointment.NotFound", "Appointment with ID $appointmentId not found")
@@ -94,7 +94,7 @@ class CompleteAppointmentSlice(
         }
 
         return AppResult.success(
-            Result(
+            Response(
                 id = appointment.id,
                 status = appointment.status,
                 completedUtc = appointment.completedUtc!!,

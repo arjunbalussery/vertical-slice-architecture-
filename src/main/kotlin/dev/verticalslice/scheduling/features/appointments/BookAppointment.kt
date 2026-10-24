@@ -50,7 +50,7 @@ class BookAppointmentSlice(
 ) {
     private val logger = LoggerFactory.getLogger(BookAppointmentSlice::class.java)
 
-    data class Command(
+    data class Request(
         @field:NotNull(message = "PatientId is required")
         val patientId: UUID?,
 
@@ -70,7 +70,7 @@ class BookAppointmentSlice(
         val notes: String? = null
     )
 
-    data class Result(
+    data class Response(
         val id: UUID,
         val startUtc: Instant,
         val endUtc: Instant
@@ -78,8 +78,8 @@ class BookAppointmentSlice(
 
     @PostMapping("/api/appointments")
     @Operation(summary = "Book a new appointment")
-    fun handleEndpoint(@Valid @RequestBody command: Command): ResponseEntity<*> {
-        val result = handle(command)
+    fun handleEndpoint(@Valid @RequestBody request: Request): ResponseEntity<*> {
+        val result = handle(request)
         return result.toResponseEntity { created ->
             ResponseEntity
                 .created(URI.create("/api/appointments/${created.id}"))
@@ -88,11 +88,11 @@ class BookAppointmentSlice(
     }
 
     @Transactional
-    fun handle(command: Command): AppResult<Result> {
-        val patientId = command.patientId!!
-        val doctorId = command.doctorId!!
-        val startUtc = command.start!!.toInstant()
-        val endUtc = command.end!!.toInstant()
+    fun handle(request: Request): AppResult<Response> {
+        val patientId = request.patientId!!
+        val doctorId = request.doctorId!!
+        val startUtc = request.start!!.toInstant()
+        val endUtc = request.end!!.toInstant()
         val nowUtc = clock.instant()
 
         // 1. Validate domain time invariants first (authoritative check using injected Clock)
@@ -102,7 +102,7 @@ class BookAppointmentSlice(
                 doctorId = doctorId,
                 startUtc = startUtc,
                 endUtc = endUtc,
-                notes = command.notes,
+                notes = request.notes,
                 nowUtc = nowUtc
             )
         } catch (ex: IllegalArgumentException) {
@@ -154,7 +154,7 @@ class BookAppointmentSlice(
         events.publishEvent(bookedEvent)
 
         return AppResult.success(
-            Result(
+            Response(
                 id = appointment.id,
                 startUtc = appointment.startUtc,
                 endUtc = appointment.endUtc

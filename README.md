@@ -35,9 +35,9 @@ flowchart LR
     subgraph VSA["Vertical Slice Architecture in Kotlin (Feature Cohesive)"]
         direction TB
         subgraph F["features/appointments/"]
-            S1["BookAppointment.kt\n(Route + Command + Validation + Handler)"]
-            S2["CompleteAppointment.kt\n(Route + Request + Validation + Handler)"]
-            S3["CancelAppointment.kt\n(Route + Request + Validation + Handler)"]
+            S1["BookAppointment.kt\n(Route + Request/Response + Validation + Handler)"]
+            S2["CompleteAppointment.kt\n(Route + Request/Response + Validation + Handler)"]
+            S3["CancelAppointment.kt\n(Route + Request/Response + Validation + Handler)"]
             DOM["domain/Appointment.kt\n(Rich Entity + Invariants + Repository)"]
             S1 --> DOM
             S2 --> DOM
@@ -82,14 +82,14 @@ We benchmarked the exact same **5-operation Healthcare Appointment Scheduling do
 
 Here are the **5 concrete architectural transformations** we applied to convert a Clean Architecture codebase into idiomatic Kotlin Vertical Slices:
 
-### Step 1: Collapse Controller, Command, Validator, and Handler into a Single Kotlin File
+### Step 1: Collapse Controller, Request/Response DTOs, Validator, and Handler into a Single Kotlin File (REPR Pattern)
 In Clean Architecture, a single `POST /api/appointments` endpoint is split into:
 - `Web/Endpoints/AppointmentsController`
 - `Application/Appointments/Commands/BookAppointment/BookAppointmentCommand`
 - `Application/Appointments/Commands/BookAppointment/BookAppointmentCommandValidator`
 - `Application/Appointments/Commands/BookAppointment/BookAppointmentCommandHandler`
 
-In our Kotlin Vertical Slice ([`BookAppointment.kt`](./src/main/kotlin/dev/verticalslice/scheduling/features/appointments/BookAppointment.kt)), Kotlin's nested `data class`es and Spring's `@RestController` allow us to house the entire request lifecycle in **one cohesive class**:
+In our Kotlin Vertical Slice ([`BookAppointment.kt`](./src/main/kotlin/dev/verticalslice/scheduling/features/appointments/BookAppointment.kt)), we use the **REPR (Request – Endpoint – Response)** pattern. Every slice uniformly defines `Request`, `Response`, `@PostMapping` / `@GetMapping`, and `@Transactional fun handle(...)` in **one cohesive class**:
 
 ```kotlin
 @RestController
@@ -101,7 +101,7 @@ class BookAppointmentSlice(
     private val events: ApplicationEventPublisher,
     private val clock: Clock
 ) {
-    data class Command(
+    data class Request(
         @field:NotNull(message = "PatientId is required") val patientId: UUID?,
         @field:NotNull(message = "DoctorId is required") val doctorId: UUID?,
         @field:NotNull(message = "Start time is required") val start: OffsetDateTime?,
@@ -109,18 +109,18 @@ class BookAppointmentSlice(
         @field:Size(max = SchedulingPolicies.MAX_NOTES_LENGTH) val notes: String? = null
     )
 
-    data class Result(val id: UUID, val startUtc: Instant, val endUtc: Instant)
+    data class Response(val id: UUID, val startUtc: Instant, val endUtc: Instant)
 
     @PostMapping("/api/appointments")
     @Operation(summary = "Book a new appointment")
-    fun handleEndpoint(@Valid @RequestBody command: Command): ResponseEntity<*> {
-        return handle(command).toResponseEntity { created ->
+    fun handleEndpoint(@Valid @RequestBody request: Request): ResponseEntity<*> {
+        return handle(request).toResponseEntity { created ->
             ResponseEntity.created(URI.create("/api/appointments/${created.id}")).body(created)
         }
     }
 
     @Transactional
-    fun handle(command: Command): AppResult<Result> {
+    fun handle(request: Request): AppResult<Response> {
         // 1. Authoritative domain invariant check & creation using injected Clock
         // 2. Verify Patient & Doctor existence
         // 3. Check for overlapping Doctor appointments
