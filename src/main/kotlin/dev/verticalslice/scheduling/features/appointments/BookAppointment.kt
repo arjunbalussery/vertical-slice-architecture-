@@ -96,7 +96,7 @@ class BookAppointmentSlice(
         val nowUtc = clock.instant()
 
         // 1. Validate domain time invariants first (authoritative check using injected Clock)
-        val (appointment, bookedEvent) = try {
+        val (appointment, bookedEvent) = runCatching {
             Appointment.schedule(
                 patientId = patientId,
                 doctorId = doctorId,
@@ -105,7 +105,7 @@ class BookAppointmentSlice(
                 notes = request.notes,
                 nowUtc = nowUtc
             )
-        } catch (ex: IllegalArgumentException) {
+        }.getOrElse { ex ->
             return AppResult.failure(
                 AppError.Validation("Appointment.ValidationFailed", ex.message ?: "Invalid appointment parameters")
             )
@@ -136,19 +136,22 @@ class BookAppointmentSlice(
         }
 
         // 5. Persist & publish domain event
-        try {
+        runCatching {
             appointments.saveAndFlush(appointment)
-        } catch (ex: DataIntegrityViolationException) {
-            logger.warn(
-                "Concurrent booking conflict for DoctorId={}, StartUtc={}, EndUtc={}",
-                doctorId, startUtc, endUtc, ex
-            )
-            return AppResult.failure(
-                AppError.Conflict(
-                    "Appointment.Conflict",
-                    "Doctor has a conflicting appointment during the requested time"
+        }.onFailure { ex ->
+            if (ex is DataIntegrityViolationException) {
+                logger.warn(
+                    "Concurrent booking conflict for DoctorId={}, StartUtc={}, EndUtc={}",
+                    doctorId, startUtc, endUtc, ex
                 )
-            )
+                return AppResult.failure(
+                    AppError.Conflict(
+                        "Appointment.Conflict",
+                        "Doctor has a conflicting appointment during the requested time"
+                    )
+                )
+            }
+            throw ex
         }
 
         events.publishEvent(bookedEvent)

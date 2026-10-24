@@ -66,27 +66,32 @@ class CompleteAppointmentSlice(
                 AppError.NotFound("Appointment.NotFound", "Appointment with ID $appointmentId not found")
             )
 
-        val completedEvent = try {
+        val completedEvent = runCatching {
             appointment.complete(notes, clock.instant())
-        } catch (ex: IllegalStateException) {
-            return AppResult.failure(
-                AppError.Validation("Appointment.CannotComplete", ex.message ?: "Cannot complete appointment")
-            )
-        } catch (ex: IllegalArgumentException) {
-            return AppResult.failure(
-                AppError.Validation("Appointment.ValidationFailed", ex.message ?: "Validation failed")
-            )
+        }.getOrElse { ex ->
+            return when (ex) {
+                is IllegalStateException -> AppResult.failure(
+                    AppError.Validation("Appointment.CannotComplete", ex.message ?: "Cannot complete appointment")
+                )
+                is IllegalArgumentException -> AppResult.failure(
+                    AppError.Validation("Appointment.ValidationFailed", ex.message ?: "Validation failed")
+                )
+                else -> throw ex
+            }
         }
 
-        try {
+        runCatching {
             appointments.saveAndFlush(appointment)
-        } catch (ex: OptimisticLockingFailureException) {
-            return AppResult.failure(
-                AppError.Conflict(
-                    "Appointment.ConcurrencyConflict",
-                    "The appointment was modified by another user. Please refresh and try again."
+        }.onFailure { ex ->
+            if (ex is OptimisticLockingFailureException) {
+                return AppResult.failure(
+                    AppError.Conflict(
+                        "Appointment.ConcurrencyConflict",
+                        "The appointment was modified by another user. Please refresh and try again."
+                    )
                 )
-            )
+            }
+            throw ex
         }
 
         if (completedEvent != null) {
